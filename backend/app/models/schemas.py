@@ -9,6 +9,9 @@ class HealthResponse(BaseModel):
 
 class ZoneRecommendationRequest(BaseModel):
     current_zone: str | None = Field(default=None)
+    address: str | None = Field(default=None)
+    day_of_week: int | None = Field(default=None, ge=0, le=6)
+    hour: int | None = Field(default=None, ge=0, le=23)
     latitude: float | None = Field(default=None)
     longitude: float | None = Field(default=None)
 
@@ -34,8 +37,10 @@ class ZoneRecommendationResponse(BaseModel):
 
 class TripEvaluationRequest(BaseModel):
     pickup_zone: str
+    day_of_week: int | None = Field(default=None, ge=0, le=6)
+    hour: int | None = Field(default=None, ge=0, le=23)
     trip_minutes: float = Field(gt=0)
-    rider_rating: float = Field(ge=4.0, le=5.0)
+    rider_rating: float = Field(ge=0.0, le=5.0)
 
 
 class TripEvaluationResponse(BaseModel):

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
-
-from app.data.sample_data import ZONES
+from app.data.trip_dataset import get_zones
 
 
 class ZoneRecommendationService:
@@ -10,16 +8,25 @@ class ZoneRecommendationService:
         self.model_manager = model_manager
         self.traffic_service = traffic_service
 
-    def recommend(self, current_zone: str | None = None, latitude=None, longitude=None):
-        origin = self.traffic_service.resolve_current_zone(current_zone, latitude, longitude)
-        hour = datetime.now().hour
+    def recommend(
+        self,
+        current_zone: str | None = None,
+        address: str | None = None,
+        day_of_week: int | None = None,
+        hour: int | None = None,
+        latitude=None,
+        longitude=None,
+    ):
+        origin = self.traffic_service.resolve_current_zone(current_zone, address, latitude, longitude)
+        day_of_week, hour = self.traffic_service.time_context(day_of_week, hour)
+        zones = get_zones()
 
         candidates = []
-        for zone in ZONES:
+        for zone in zones:
             travel_minutes = self.traffic_service.estimate_travel_minutes(origin, zone, hour)
             demand_index = self.traffic_service.estimate_demand(zone, hour)
             predicted_hourly = self.model_manager.zone_model.predict(
-                [[zone.name, hour, demand_index, travel_minutes]]
+                [[zone.name, day_of_week, hour, demand_index, travel_minutes]]
             )[0]
             net_score = predicted_hourly - travel_minutes * 0.55
 

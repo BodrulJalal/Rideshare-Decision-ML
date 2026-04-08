@@ -99,6 +99,37 @@ h1 {
   gap: 1.5rem;
 }
 
+.time-panel {
+  margin-bottom: 1.5rem;
+}
+
+.time-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.time-panel-header label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 700;
+}
+
+.time-panel-header input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+}
+
+.time-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 240px));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;
@@ -165,6 +196,15 @@ button {
 @media (max-width: 860px) {
   .hero,
   .app-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .time-panel-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .time-controls {
     grid-template-columns: 1fr;
   }
 

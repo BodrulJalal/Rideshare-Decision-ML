@@ -1,21 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-const ZONES = ["Downtown", "Airport", "Midtown", "Stadium District", "University", "Waterfront"];
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const DAY_OPTIONS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
+  value: String(hour),
+  label: new Date(2024, 0, 1, hour).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+}));
 
 const defaultZoneForm = {
   current_zone: "",
-  latitude: "",
-  longitude: "",
+  address: "",
 };
 
 const defaultTripForm = {
-  pickup_zone: "Downtown",
+  pickup_zone: "",
   trip_minutes: "",
   rider_rating: "",
 };
 
 function App() {
-  const [apiBaseUrl, setApiBaseUrl] = useState("http://127.0.0.1:8000");
+  const [zones, setZones] = useState([]);
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [timeOverride, setTimeOverride] = useState({
+    day_of_week: String((new Date().getDay() + 6) % 7),
+    hour: String(new Date().getHours()),
+  });
   const [zoneForm, setZoneForm] = useState(defaultZoneForm);
   const [tripForm, setTripForm] = useState(defaultTripForm);
   const [zoneResult, setZoneResult] = useState(null);
@@ -25,8 +34,42 @@ function App() {
   const [zoneLoading, setZoneLoading] = useState(false);
   const [tripLoading, setTripLoading] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadZones() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/zones`);
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error("Unable to load zones.");
+        }
+        if (!cancelled && Array.isArray(data)) {
+          setZones(data);
+          setTripForm((current) => ({
+            ...current,
+            pickup_zone: current.pickup_zone && data.includes(current.pickup_zone) ? current.pickup_zone : (data[0] || ""),
+          }));
+          setZoneForm((current) => ({
+            ...current,
+            current_zone: current.current_zone && data.includes(current.current_zone) ? current.current_zone : "",
+          }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setZones([]);
+        }
+      }
+    }
+
+    loadZones();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function postJson(path, payload) {
-    const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}${path}`, {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -48,8 +91,9 @@ function App() {
     try {
       const payload = {
         current_zone: zoneForm.current_zone || null,
-        latitude: zoneForm.latitude ? Number(zoneForm.latitude) : null,
-        longitude: zoneForm.longitude ? Number(zoneForm.longitude) : null,
+        address: zoneForm.address.trim() || null,
+        day_of_week: useCustomTime ? Number(timeOverride.day_of_week) : null,
+        hour: useCustomTime ? Number(timeOverride.hour) : null,
       };
       const data = await postJson("/api/recommend-zone", payload);
       setZoneResult(data);
@@ -69,6 +113,8 @@ function App() {
     try {
       const payload = {
         pickup_zone: tripForm.pickup_zone,
+        day_of_week: useCustomTime ? Number(timeOverride.day_of_week) : null,
+        hour: useCustomTime ? Number(timeOverride.hour) : null,
         trip_minutes: Number(tripForm.trip_minutes),
         rider_rating: Number(tripForm.rider_rating),
       };
@@ -102,13 +148,48 @@ function App() {
         </div>
       </section>
 
-      <section className="api-config panel">
-        <h2>Backend Connection</h2>
-        <label>
-          FastAPI base URL
-          <input value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
-        </label>
-        <p className="helper-text">Run the backend locally and keep this pointed at that server.</p>
+      <section className="panel time-panel">
+        <div className="time-panel-header">
+          <h2>Time Settings</h2>
+          <label>
+            <input
+              type="checkbox"
+              checked={useCustomTime}
+              onChange={(event) => setUseCustomTime(event.target.checked)}
+            />{" "}
+            Use custom day and time for both tools
+          </label>
+        </div>
+        {useCustomTime && (
+          <div className="time-controls">
+            <label>
+              Day
+              <select
+                value={timeOverride.day_of_week}
+                onChange={(event) => setTimeOverride({ ...timeOverride, day_of_week: event.target.value })}
+              >
+                {DAY_OPTIONS.map((day, index) => (
+                  <option key={day} value={index}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Time
+              <select
+                value={timeOverride.hour}
+                onChange={(event) => setTimeOverride({ ...timeOverride, hour: event.target.value })}
+              >
+                {TIME_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </section>
 
       <section className="app-grid">
@@ -119,10 +200,12 @@ function App() {
               Current zone
               <select
                 value={zoneForm.current_zone}
-                onChange={(event) => setZoneForm({ ...zoneForm, current_zone: event.target.value })}
+                onChange={(event) =>
+                  setZoneForm({ ...zoneForm, current_zone: event.target.value, address: event.target.value ? "" : zoneForm.address })
+                }
               >
-                <option value="">Auto-detect from coordinates</option>
-                {ZONES.map((zone) => (
+                <option value="">Use address instead</option>
+                {zones.map((zone) => (
                   <option key={zone} value={zone}>
                     {zone}
                   </option>
@@ -130,23 +213,14 @@ function App() {
               </select>
             </label>
             <label>
-              Latitude
+              Current address
               <input
-                type="number"
-                step="0.0001"
-                placeholder="40.7128"
-                value={zoneForm.latitude}
-                onChange={(event) => setZoneForm({ ...zoneForm, latitude: event.target.value })}
-              />
-            </label>
-            <label>
-              Longitude
-              <input
-                type="number"
-                step="0.0001"
-                placeholder="-74.0060"
-                value={zoneForm.longitude}
-                onChange={(event) => setZoneForm({ ...zoneForm, longitude: event.target.value })}
+                type="text"
+                placeholder="W 49th St, Manhattan, NY"
+                value={zoneForm.address}
+                onChange={(event) =>
+                  setZoneForm({ ...zoneForm, address: event.target.value, current_zone: event.target.value ? "" : zoneForm.current_zone })
+                }
               />
             </label>
             <button type="submit">{zoneLoading ? "Scoring nearby zones..." : "Recommend zone"}</button>
@@ -171,7 +245,7 @@ function App() {
               </>
             )}
             {!zoneResult && !zoneError && (
-              <p>Enter your current zone or coordinates to see where demand looks strongest.</p>
+              <p>Choose a zone or type an address with the local area name to see where demand looks strongest.</p>
             )}
           </div>
         </article>
@@ -185,7 +259,7 @@ function App() {
                 value={tripForm.pickup_zone}
                 onChange={(event) => setTripForm({ ...tripForm, pickup_zone: event.target.value })}
               >
-                {ZONES.map((zone) => (
+                {zones.map((zone) => (
                   <option key={zone} value={zone}>
                     {zone}
                   </option>
@@ -208,7 +282,7 @@ function App() {
               <input
                 type="number"
                 step="0.01"
-                min="4"
+                min="0"
                 max="5"
                 placeholder="4.89"
                 value={tripForm.rider_rating}

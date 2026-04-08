@@ -10,6 +10,8 @@ The app includes two ML features:
 - A zone recommendation model that suggests the best nearby zone to wait in using zone, time of day, demand, and travel time.
 - A trip evaluation model that predicts whether an offered ride is likely to be a high-fare trip including tip.
 
+By default, the backend now looks for a trip dataset CSV in `data/trips/` and trains the models from that file. If no CSV is present, it falls back to the synthetic demo data.
+
 ## Stack
 
 - Python 3.13
@@ -22,12 +24,16 @@ The app includes two ML features:
 ## Project structure
 
 ```text
+data/
+  trips/
+    Uber Rides - Cleaned.csv
 backend/
   requirements.txt
   app/
     main.py
     api/routes.py
     data/sample_data.py
+    data/trip_dataset.py
     ml/training.py
     ml/model_manager.py
     models/schemas.py
@@ -61,10 +67,11 @@ In a second terminal:
 ```bash
 cd frontend
 npm install
+copy .env.example .env
 npm run dev
 ```
 
-Then open the Vite URL, usually `http://127.0.0.1:5173`, and keep the frontend's API base URL set to `http://127.0.0.1:8000`.
+Then open the Vite URL, usually `http://127.0.0.1:5173`. The frontend reads the backend URL from `frontend/.env` via `VITE_API_BASE_URL`.
 
 ## API endpoints
 
@@ -78,9 +85,10 @@ Example payload:
 
 ```json
 {
-  "current_zone": "Downtown",
-  "latitude": 40.7128,
-  "longitude": -74.0060
+  "current_zone": "Brooklyn",
+  "address": null,
+  "day_of_week": 4,
+  "hour": 18
 }
 ```
 
@@ -91,13 +99,21 @@ Response includes:
 - Predicted hourly earnings
 - Top alternatives for quick comparison
 
+You can identify the current location by:
+
+- Choosing a known zone from the dataset, such as `Brooklyn`, `Flushing`, or `Ridgewood`
+- Entering an address that includes one of those location names, like `W 49th St, New York, NY` or `Myrtle Ave, Ridgewood, NY`
+- Optionally enabling a shared custom day/time override in the UI; otherwise the current day and time are used automatically
+
 ### `POST /api/evaluate-trip`
 
 Example payload:
 
 ```json
 {
-  "pickup_zone": "Airport",
+  "pickup_zone": "Brooklyn",
+  "day_of_week": 5,
+  "hour": 21,
   "trip_minutes": 27,
   "rider_rating": 4.92
 }
@@ -119,5 +135,6 @@ Response includes:
 
 ## Notes
 
-- The training data is synthetic placeholder data so the full app runs out of the box.
-- Both ML models train at backend startup for a self-contained demo setup.
+- Both ML models train at backend startup.
+- When `data/trips/*.csv` exists, the backend uses that real trip history to train.
+- If the CSV is missing, the app falls back to synthetic placeholder data so the demo still runs out of the box.

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from app.data.trip_dataset import get_zones
 from app.ml.model_manager import ModelManager
 from app.models.schemas import (
     HealthResponse,
@@ -23,6 +24,11 @@ fare_service = FarePredictionService(model_manager)
 @router.get("/api/health", response_model=HealthResponse)
 def health_check():
     return HealthResponse(status="ok")
+
+
+@router.get("/api/zones", response_model=list[str])
+def list_zones():
+    return [zone.name for zone in get_zones()]
 
 
 @router.post("/api/recommend-zone", response_model=ZoneRecommendationResponse)
