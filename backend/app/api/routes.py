@@ -3,7 +3,9 @@ from fastapi import APIRouter, HTTPException
 from app.data.trip_dataset import get_zones
 from app.ml.model_manager import ModelManager
 from app.models.schemas import (
+    GeoJsonFeatureCollection,
     HealthResponse,
+    RelocationZoneOption,
     TripEvaluationRequest,
     TripEvaluationResponse,
     ZoneRecommendationRequest,
@@ -29,6 +31,19 @@ def health_check():
 @router.get("/api/zones", response_model=list[str])
 def list_zones():
     return [zone.name for zone in get_zones()]
+
+
+@router.get("/api/relocation-zones", response_model=list[RelocationZoneOption])
+def list_relocation_zones():
+    return zone_service.available_relocation_zones()
+
+
+@router.get("/api/relocation-zones-geojson", response_model=GeoJsonFeatureCollection)
+def relocation_zones_geojson():
+    try:
+        return GeoJsonFeatureCollection(**zone_service.relocation_geojson())
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.post("/api/recommend-zone", response_model=ZoneRecommendationResponse)
