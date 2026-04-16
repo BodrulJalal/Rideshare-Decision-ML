@@ -65,17 +65,22 @@ class ZoneRecommendationResponse(BaseModel):
 
 class TripEvaluationRequest(BaseModel):
     pickup_zone: str
+    trip_type: str
     day_of_week: int | None = Field(default=None, ge=0, le=6)
     hour: int | None = Field(default=None, ge=0, le=23)
     trip_minutes: float = Field(gt=0)
-    rider_rating: float = Field(ge=0.0, le=5.0)
+
+
+class TripDestinationCandidate(BaseModel):
+    zone: str
+    probability: float
 
 
 class TripEvaluationResponse(BaseModel):
     pickup_zone: str
+    trip_type: str
     trip_minutes: float
-    rider_rating: float
-    high_fare_probability: float
-    likely_high_fare: bool
-    expected_tip_signal: float
+    predicted_dropoff_zone: str
+    prediction_confidence: float
+    top_dropoff_zones: list[TripDestinationCandidate]
     driver_message: str

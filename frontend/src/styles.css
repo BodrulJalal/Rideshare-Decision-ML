@@ -166,6 +166,32 @@ h1 {
   margin-top: 1.25rem;
 }
 
+.time-presets {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.time-presets-label {
+  font-weight: 600;
+}
+
+.time-preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.time-preset-button {
+  padding: 0.7rem 0.9rem;
+}
+
+.time-preset-button.active {
+  background: linear-gradient(135deg, var(--accent) 0%, #14a26d 100%);
+  color: white;
+  border-color: transparent;
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;

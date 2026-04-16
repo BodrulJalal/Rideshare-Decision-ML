@@ -6,6 +6,14 @@ const TIME_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
   value: String(hour),
   label: new Date(2024, 0, 1, hour).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
 }));
+const TIME_PRESETS = [
+  { label: "Morning Rush", hour: "8" },
+  { label: "Lunch", hour: "12" },
+  { label: "Afternoon", hour: "15" },
+  { label: "Evening Rush", hour: "18" },
+  { label: "Night", hour: "21" },
+];
+const TRIP_MINUTE_PRESETS = ["5", "10", "15", "20", "30", "45", "60"];
 
 const defaultZoneForm = {
   current_zone: "",
@@ -16,12 +24,13 @@ const defaultZoneForm = {
 
 const defaultTripForm = {
   pickup_zone: "",
+  trip_type: "",
   trip_minutes: "",
-  rider_rating: "",
 };
 
 function App() {
   const [tripZones, setTripZones] = useState([]);
+  const [tripTypes, setTripTypes] = useState([]);
   const [relocationZones, setRelocationZones] = useState([]);
   const [relocationGeoJson, setRelocationGeoJson] = useState(null);
   const [activeTool, setActiveTool] = useState("relocation");
@@ -39,33 +48,39 @@ function App() {
   const [zoneLoading, setZoneLoading] = useState(false);
   const [tripLoading, setTripLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [tripLocationLoading, setTripLocationLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadZones() {
       try {
-        const [tripResponse, relocationResponse, geoJsonResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/zones`),
+        const [tripResponse, tripTypesResponse, relocationResponse, geoJsonResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/trip-pickup-zones`),
+          fetch(`${API_BASE_URL}/api/trip-types`),
           fetch(`${API_BASE_URL}/api/relocation-zones`),
           fetch(`${API_BASE_URL}/api/relocation-zones-geojson`),
         ]);
-        const [tripData, relocationData, geoJsonData] = await Promise.all([
+        const [tripData, tripTypesData, relocationData, geoJsonData] = await Promise.all([
           tripResponse.json(),
+          tripTypesResponse.json(),
           relocationResponse.json(),
           geoJsonResponse.json(),
         ]);
-        if (!tripResponse.ok || !relocationResponse.ok || !geoJsonResponse.ok) {
+        if (!tripResponse.ok || !tripTypesResponse.ok || !relocationResponse.ok || !geoJsonResponse.ok) {
           throw new Error("Unable to load zones.");
         }
         if (!cancelled && Array.isArray(tripData) && Array.isArray(relocationData)) {
           setTripZones(tripData);
+          setTripTypes(Array.isArray(tripTypesData) ? tripTypesData : []);
           setRelocationZones(relocationData);
           setRelocationGeoJson(geoJsonData);
           setTripForm((current) => ({
             ...current,
             pickup_zone:
               current.pickup_zone && tripData.includes(current.pickup_zone) ? current.pickup_zone : (tripData[0] || ""),
+            trip_type:
+              current.trip_type && tripTypesData.includes(current.trip_type) ? current.trip_type : (tripTypesData[0] || ""),
           }));
           setZoneForm((current) => ({
             ...current,
@@ -78,6 +93,7 @@ function App() {
       } catch (error) {
         if (!cancelled) {
           setTripZones([]);
+          setTripTypes([]);
           setRelocationZones([]);
           setRelocationGeoJson(null);
         }
@@ -178,10 +194,10 @@ function App() {
     try {
       const payload = {
         pickup_zone: tripForm.pickup_zone,
+        trip_type: tripForm.trip_type,
         day_of_week: useCustomTime ? Number(timeOverride.day_of_week) : null,
         hour: useCustomTime ? Number(timeOverride.hour) : null,
         trip_minutes: Number(tripForm.trip_minutes),
-        rider_rating: Number(tripForm.rider_rating),
       };
       const data = await postJson("/api/evaluate-trip", payload);
       setTripResult(data);
@@ -190,6 +206,55 @@ function App() {
     } finally {
       setTripLoading(false);
     }
+  }
+
+  function handleUseTripCurrentLocation() {
+    setTripError("");
+
+    if (!navigator.geolocation) {
+      setTripError("Your browser does not support location access.");
+      return;
+    }
+
+    setTripLocationLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const params = new URLSearchParams({
+            latitude: String(position.coords.latitude),
+            longitude: String(position.coords.longitude),
+          });
+          const zone = await fetch(`${API_BASE_URL}/api/resolve-trip-zone?${params.toString()}`).then(async (response) => {
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.detail || "Unable to resolve current pickup zone.");
+            }
+            return data;
+          });
+          setTripForm((current) => ({
+            ...current,
+            pickup_zone: zone,
+          }));
+        } catch (error) {
+          setTripError(error.message);
+        } finally {
+          setTripLocationLoading(false);
+        }
+      },
+      (error) => {
+        const message =
+          error.code === error.PERMISSION_DENIED
+            ? "Location access was denied."
+            : "Unable to get your current location.";
+        setTripError(message);
+        setTripLocationLoading(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000,
+      },
+    );
   }
 
   const relocationZoneLookup = Object.fromEntries(relocationZones.map((zone) => [zone.name, zone.id]));
@@ -230,7 +295,7 @@ function App() {
           <p>Powered by two ML endpoints</p>
           <ul>
             <li>Relocation recommendations from your saved Uber zone model</li>
-            <li>High-fare likelihood scoring using pickup zone, trip duration, and rider rating</li>
+            <li>Dropoff-zone prediction using pickup zone, ride type, time, and trip length</li>
             <li>Travel time and demand signals blended into the relocation ranking response</li>
           </ul>
         </div>
@@ -393,6 +458,21 @@ function App() {
           <article className="panel single-panel">
             <h2>Evaluate Offered Trip</h2>
             <form className="form-grid" onSubmit={handleTripSubmit}>
+              <div className="time-presets">
+                <span className="time-presets-label">Ride type</span>
+                <div className="time-preset-buttons">
+                  {tripTypes.map((tripType) => (
+                    <button
+                      key={tripType}
+                      type="button"
+                      className={`secondary-button time-preset-button ${tripForm.trip_type === tripType ? "active" : ""}`}
+                      onClick={() => setTripForm({ ...tripForm, trip_type: tripType })}
+                    >
+                      {tripType}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label>
                 Pickup zone
                 <select
@@ -406,6 +486,12 @@ function App() {
                   ))}
                 </select>
               </label>
+              <div className="location-picker">
+                <span className="location-label">Pickup zone from current location</span>
+                <button type="button" className="secondary-button" onClick={handleUseTripCurrentLocation} disabled={tripLocationLoading}>
+                  {tripLocationLoading ? "Finding pickup zone..." : "Use current location"}
+                </button>
+              </div>
               <label>
                 Predicted trip time (minutes)
                 <input
@@ -417,38 +503,48 @@ function App() {
                   onChange={(event) => setTripForm({ ...tripForm, trip_minutes: event.target.value })}
                 />
               </label>
-              <label>
-                Rider rating
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="5"
-                  placeholder="4.89"
-                  value={tripForm.rider_rating}
-                  onChange={(event) => setTripForm({ ...tripForm, rider_rating: event.target.value })}
-                />
-              </label>
-              <button type="submit">{tripLoading ? "Estimating fare quality..." : "Score trip"}</button>
+              <div className="time-presets">
+                <span className="time-presets-label">Quick trip lengths</span>
+                <div className="time-preset-buttons">
+                  {TRIP_MINUTE_PRESETS.map((minutes) => (
+                    <button
+                      key={minutes}
+                      type="button"
+                      className={`secondary-button time-preset-button ${tripForm.trip_minutes === minutes ? "active" : ""}`}
+                      onClick={() => setTripForm({ ...tripForm, trip_minutes: minutes })}
+                    >
+                      {minutes} min
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button type="submit">{tripLoading ? "Predicting destination..." : "Predict dropoff zone"}</button>
             </form>
             <div className={`result-card ${!tripResult && !tripError ? "muted" : ""}`}>
               {tripError && <p>{tripError}</p>}
               {tripResult && (
                 <>
-                  <strong>{tripResult.likely_high_fare ? "High-fare signal" : "Borderline offer"}</strong>
+                  <strong>{tripResult.predicted_dropoff_zone}</strong>
                   <p>{tripResult.driver_message}</p>
                   <div className="pill">
-                    {(tripResult.high_fare_probability * 100).toFixed(1)}% high-fare probability
+                    {(tripResult.prediction_confidence * 100).toFixed(1)}% confidence
                   </div>
-                  <p>Expected tip signal: ${tripResult.expected_tip_signal}</p>
+                  <p>Most likely dropoff areas:</p>
+                  <ul>
+                    {tripResult.top_dropoff_zones.map((item) => (
+                      <li key={item.zone}>
+                        <strong>{item.zone}</strong>: {(item.probability * 100).toFixed(1)}%
+                      </li>
+                    ))}
+                  </ul>
                   <p>
-                    Inputs used: {tripResult.pickup_zone}, {tripResult.trip_minutes} min, rider rating{" "}
-                    {tripResult.rider_rating}
+                    Inputs used: {tripResult.trip_type}, {tripResult.pickup_zone}, {tripResult.trip_minutes} min,{" "}
+                    {DAY_OPTIONS[activeDayIndex]}, {activeTimeLabel}
                   </p>
                 </>
               )}
               {!tripResult && !tripError && (
-                <p>Add the offer details to estimate whether the trip is likely to land in the high-fare tier.</p>
+                <p>Add the offer details to predict which area this ride is most likely to go to.</p>
               )}
             </div>
           </article>

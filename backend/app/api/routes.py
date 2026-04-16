@@ -33,6 +33,24 @@ def list_zones():
     return [zone.name for zone in get_zones()]
 
 
+@router.get("/api/trip-pickup-zones", response_model=list[str])
+def list_trip_pickup_zones():
+    return fare_service.available_pickup_zones()
+
+
+@router.get("/api/resolve-trip-zone", response_model=str)
+def resolve_trip_zone(latitude: float, longitude: float):
+    try:
+        return traffic_service.resolve_current_zone(None, None, latitude, longitude).name
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/api/trip-types", response_model=list[str])
+def list_trip_types():
+    return fare_service.available_trip_types()
+
+
 @router.get("/api/relocation-zones", response_model=list[RelocationZoneOption])
 def list_relocation_zones():
     return zone_service.available_relocation_zones()
