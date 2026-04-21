@@ -1,56 +1,174 @@
 # Driver Earnings Navigator
 
-Driver Earnings Navigator is a web app for ride-hailing drivers with a separated frontend and backend:
+Driver Earnings Navigator is a full-stack rideshare decision-support project for drivers. It gives drivers two practical tools:
 
-- `backend/` contains a FastAPI service and all machine learning logic.
-- `frontend/` contains a React + Vite website that calls the backend API.
+- a relocation recommender that suggests the best taxi zone to move toward next,
+- a trip evaluator that predicts the most likely dropoff zone for an offered ride.
 
-The app includes two ML features:
+The repository is now organized into dedicated `frontend`, `backend`, and `data-engineering` areas so the application is easier to understand, run, and deploy.
 
-- A zone recommendation model that suggests the best nearby zone to wait in using zone, time of day, demand, and travel time.
-- A trip evaluation model that predicts whether an offered ride is likely to be a high-fare trip including tip.
+## System architecture
 
-By default, the backend now looks for a trip dataset CSV in `data/trips/` and trains the models from that file. If no CSV is present, it falls back to the synthetic demo data.
-
-## Stack
-
-- Python 3.13
-- FastAPI
-- Uvicorn
-- scikit-learn
-- React
-- Vite
-
-## Project structure
-
-```text
-data/
-  trips/
-    Uber Rides - Cleaned.csv
-backend/
-  requirements.txt
-  app/
-    main.py
-    api/routes.py
-    data/sample_data.py
-    data/trip_dataset.py
-    ml/training.py
-    ml/model_manager.py
-    models/schemas.py
-    services/traffic.py
-    services/recommender.py
-    services/fare_predictor.py
-frontend/
-  package.json
-  vite.config.js
-  index.html
-  src/
-    main.jsx
-    App.jsx
-    styles.css
+```mermaid
+flowchart LR
+    Driver[Driver] --> UI[React + Vite frontend]
+    UI -->|REST /api/*| API[FastAPI backend]
+    API --> Relocation[Relocation recommendation service]
+    API --> Trip[Trip destination prediction service]
+    Relocation --> RelocationArtifact[Notebook relocation ensemble artifact]
+    Relocation --> ZoneShapes[TLC taxi zone shapefile]
+    Trip --> TripArtifact[Saved dropoff classifier artifact]
+    API --> LocalData[Local CSV training fallback]
+    RelocationArtifact --> Notebook[Model Building/Capstone.ipynb]
 ```
 
-## Setup
+## Repository structure
+
+```text
+Rideshare-Decision-ML/
+  backend/
+    app/
+      api/
+        endpoints/
+        dependencies.py
+        router.py
+      core/
+      data/
+      ml/
+      schemas/
+      services/
+      main.py
+    uber_dropoff_rf_model.joblib
+    uber_label_encoders.joblib
+    uber_relocation_ensemble_model_finalv1.joblib
+    Dockerfile
+    README.md
+    requirements.txt
+  frontend/
+    src/
+      components/
+      features/
+      lib/
+      App.jsx
+      main.jsx
+      styles.css
+    Dockerfile
+    nginx.conf
+    README.md
+    package.json
+  data-engineering/
+    architecture/
+      rds-architecture.md
+    sql/
+      postgres-schema.sql
+    README.md
+  data/
+    trips/
+      Uber Rides - Cleaned.csv
+  Model Building/
+    Capstone.ipynb
+    content/
+      taxi_zone_lookup.csv
+      taxi_zones/
+  docker-compose.yml
+```
+
+## Machine learning models
+
+### 1. Relocation recommender
+
+The production relocation recommender is documented in [Model Building/Capstone.ipynb](Model%20Building/Capstone.ipynb) and loaded by the backend from `backend/uber_relocation_ensemble_model_finalv1.joblib`.
+
+```mermaid
+flowchart TD
+    Request[Current zone + day + hour] --> Candidates[Reachable destination zones]
+    Candidates --> Tier1[Tier 1: Random Forest regressor]
+    Candidates --> Tier2[Tier 2: JIT Q-learning policy]
+    Candidates --> Tier3[Tier 3: UCB contextual bandit]
+    Tier1 --> Score1[Immediate earnings score]
+    Tier2 --> Score2[Long-horizon best zone]
+    Tier3 --> Score3[Exploration-aware score]
+    Score1 --> Ensemble[Weighted ensemble]
+    Score2 --> Ensemble
+    Score3 --> Ensemble
+    Ensemble --> Result[Recommended zone + top alternatives]
+```
+
+Notebook-backed details:
+
+| Layer | Model | Role | Source |
+| --- | --- | --- | --- |
+| Tier 1 | Random Forest Regressor | Predicts expected `pay_per_minute` for a destination zone at a given hour/day | `Capstone.ipynb` |
+| Tier 2 | Q-learning | Finds a zone with stronger long-term reward instead of only short-term pay | `Capstone.ipynb` + deployed runtime logic |
+| Tier 3 | UCB contextual bandit | Avoids sending every driver to the same hotspot and keeps exploration alive | `Capstone.ipynb` |
+
+Important notebook findings:
+
+- The relocation notebook is built around NYC TLC HVFHV data plus TLC taxi-zone lookup and shapefiles.
+- The notebook reports a Random Forest relocation model with best settings of `n_estimators=50`, `max_depth=10`, and `min_samples_split=10`.
+- The notebook reports relocation regression performance of `MAE = $0.12 per minute` and `RMSE = $0.19 per minute`.
+- The notebook tunes the contextual bandit exploration constant and reports `c = 2.0` as the best UCB setting.
+- The deployed backend currently combines the three relocation tiers with weights `0.60`, `0.25`, and `0.15` in `backend/app/services/recommender.py`.
+
+### 2. Trip dropoff predictor
+
+The dropoff model is served from `backend/uber_dropoff_rf_model.joblib` with label encoders in `backend/uber_label_encoders.joblib`.
+
+```mermaid
+flowchart LR
+    TripInput[Trip type + pickup zone + day + hour + duration] --> Encoding[Label encoding]
+    Encoding --> RF[RandomForestClassifier]
+    RF --> Output[Predicted dropoff zone + top 3 probabilities]
+```
+
+Artifact-backed details:
+
+- Model type: `RandomForestClassifier`
+- Parameters loaded from the saved artifact: `n_estimators=200`, `min_samples_split=10`, `random_state=42`, `max_depth=None`
+- Feature columns: `Trip_Type_Encoded`, `Day_of_Week_Num`, `Hour_Bucket`, `Duration_Minutes`, `Pickup_Zone_Encoded`
+- Encoder coverage in the deployed artifact: 9 trip types, 35 pickup zones, and 43 dropoff zones
+
+Note:
+The main notebook in this repo focuses on the relocation ensemble. The dropoff model description above comes from direct inspection of the saved production artifact that the backend loads at runtime.
+
+### 3. Fallback training path
+
+If the saved artifacts are missing, the backend can still start by training simplified models from:
+
+- `data/trips/Uber Rides - Cleaned.csv`
+- synthetic fallback data in `backend/app/data/sample_data.py`
+
+That fallback path is implemented in:
+
+- `backend/app/ml/training.py`
+- `backend/app/data/trip_dataset.py`
+
+## Data sources
+
+- `Model Building/content/uber_sampled_data_jan_feb_2026.csv`
+  Sampled TLC HVFHV data used in the relocation notebook workflow.
+- `Model Building/content/taxi_zone_lookup.csv`
+  Taxi-zone lookup table for translating `LocationID` values into borough/zone names.
+- `Model Building/content/taxi_zones/*`
+  Shapefile assets used by the backend to produce GeoJSON for the relocation map.
+- `data/trips/Uber Rides - Cleaned.csv`
+  Cleaned trip data used by the lightweight fallback pipeline.
+
+## API surface
+
+- `GET /api/health`
+- `GET /api/zones`
+- `GET /api/relocation-zones`
+- `GET /api/relocation-zones-geojson`
+- `POST /api/recommend-zone`
+- `GET /api/trip-pickup-zones`
+- `GET /api/trip-types`
+- `GET /api/resolve-trip-zone`
+- `POST /api/evaluate-trip`
+
+## Local development
+
+### Backend
 
 ```bash
 cd backend
@@ -60,9 +178,9 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-The API will start on `http://127.0.0.1:8000`.
+The backend runs on `http://127.0.0.1:8000`.
 
-In a second terminal:
+### Frontend
 
 ```bash
 cd frontend
@@ -71,70 +189,25 @@ copy .env.example .env
 npm run dev
 ```
 
-Then open the Vite URL, usually `http://127.0.0.1:5173`. The frontend reads the backend URL from `frontend/.env` via `VITE_API_BASE_URL`.
+The frontend runs on `http://127.0.0.1:5173`.
 
-## API endpoints
+## Docker deployment
 
-### `GET /api/health`
+This repo now includes Dockerfiles for both applications and a root `docker-compose.yml`.
 
-Returns a simple health check response.
-
-### `POST /api/recommend-zone`
-
-Example payload:
-
-```json
-{
-  "current_zone": "Brooklyn",
-  "address": null,
-  "day_of_week": 4,
-  "hour": 18
-}
+```bash
+docker compose up --build
 ```
 
-Response includes:
+Default ports:
 
-- Recommended zone
-- Estimated travel minutes
-- Predicted hourly earnings
-- Top alternatives for quick comparison
+- frontend: `http://localhost:5173`
+- backend: `http://localhost:8000`
 
-You can identify the current location by:
+## Data engineering and RDS documentation
 
-- Choosing a known zone from the dataset, such as `Brooklyn`, `Flushing`, or `Ridgewood`
-- Entering an address that includes one of those location names, like `W 49th St, New York, NY` or `Myrtle Ave, Ridgewood, NY`
-- Optionally enabling a shared custom day/time override in the UI; otherwise the current day and time are used automatically
+The new `data-engineering/` folder documents how to move the current local-file workflow into a PostgreSQL RDS-backed architecture:
 
-### `POST /api/evaluate-trip`
-
-Example payload:
-
-```json
-{
-  "pickup_zone": "Brooklyn",
-  "day_of_week": 5,
-  "hour": 21,
-  "trip_minutes": 27,
-  "rider_rating": 4.92
-}
-```
-
-Response includes:
-
-- Probability of a high fare
-- Tip signal
-- A short accept-or-be-selective recommendation
-
-## Real-time traffic integration
-
-`backend/app/services/traffic.py` currently uses a mocked distance and congestion estimator. To upgrade it:
-
-1. Replace `estimate_travel_minutes` with a Google Maps, Mapbox, or HERE routing API call.
-2. Keep the same response shape so the recommender service continues working.
-3. Optionally add live traffic snapshots or demand feeds from a database or cache.
-
-## Notes
-
-- Both ML models train at backend startup.
-- When `data/trips/*.csv` exists, the backend uses that real trip history to train.
-- If the CSV is missing, the app falls back to synthetic placeholder data so the demo still runs out of the box.
+- [data-engineering/README.md](data-engineering/README.md)
+- [data-engineering/architecture/rds-architecture.md](data-engineering/architecture/rds-architecture.md)
+- [data-engineering/sql/postgres-schema.sql](data-engineering/sql/postgres-schema.sql)

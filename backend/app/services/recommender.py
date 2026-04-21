@@ -34,7 +34,7 @@ class ZoneRecommendationService:
         self.model_manager = model_manager
         self.traffic_service = traffic_service
 
-    def available_relocation_zones(self) -> list[str]:
+    def available_relocation_zones(self) -> list[dict[str, int | str]]:
         artifact = self.model_manager.relocation_artifact
         if artifact is None:
             return [{"id": index + 1, "name": zone.name} for index, zone in enumerate(get_zones())]

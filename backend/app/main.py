@@ -1,19 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import router
+from app.api.router import router
+from app.core.config import settings
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Driver Earnings Navigator API",
-        description="FastAPI backend for rideshare driver zone recommendations and trip offer scoring.",
-        version="1.0.0",
+        title=settings.api_title,
+        description=settings.api_description,
+        version=settings.api_version,
     )
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=list(settings.cors_origins),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
