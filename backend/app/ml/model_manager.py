@@ -1,28 +1,31 @@
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
+import logging
 from pathlib import Path
+import sys
 
 import joblib
+import pandas as pd
 
 from app.ml.training import train_trip_model, train_zone_model
 
 
-class TunableUCBBandit:
-    """Compatibility shim for deserializing the saved relocation artifact."""
+logger = logging.getLogger(__name__)
+
+
+class RelocationRecommender:
+    """Compatibility shim for deserializing the saved relocation recommender artifact."""
 
 
 @dataclass
 class RelocationArtifact:
-    rf_model: object
-    bandit: object
-    travel_matrix: object
-    pay_stats: object
-    taxi_zones: object
+    model: object
+    training_table: pd.DataFrame
+    zone_lookup: pd.DataFrame
     feature_cols: list[str]
-    loc_to_idx: dict
-    idx_to_loc: dict
+    feature_importance_map: dict[str, float]
+    sorted_important_features: list[str]
 
 
 @dataclass
@@ -35,6 +38,7 @@ class TripArtifact:
 class ModelBundle:
     zone_model: object
     trip_model: object
+    taxi_zone_lookup: pd.DataFrame | None
     relocation_artifact: RelocationArtifact | None
     trip_artifact: TripArtifact | None
 
@@ -44,42 +48,76 @@ class ModelManager:
         self.bundle = ModelBundle(
             zone_model=train_zone_model(),
             trip_model=train_trip_model(),
+            taxi_zone_lookup=self._load_taxi_zone_lookup(),
             relocation_artifact=self._load_relocation_artifact(),
             trip_artifact=self._load_trip_artifact(),
         )
 
+    def _load_taxi_zone_lookup(self) -> pd.DataFrame | None:
+        repo_root = Path(__file__).resolve().parents[3]
+        candidate_paths = (
+            repo_root / "Model Building" / "Capstone Files" / "Step 3" / "taxi_zone_lookup.csv",
+            repo_root / "Model Building" / "content" / "taxi_zone_lookup.csv",
+        )
+
+        for path in candidate_paths:
+            if not path.exists():
+                continue
+            try:
+                zone_lookup = pd.read_csv(path)
+            except ValueError as exc:
+                logger.warning("Taxi zone lookup could not be loaded from %s: %s", path, exc)
+                continue
+            if {"LocationID", "Zone"}.issubset(zone_lookup.columns):
+                return zone_lookup
+
+        return None
+
     def _load_relocation_artifact(self) -> RelocationArtifact | None:
-        artifact_path = Path(__file__).resolve().parents[2] / "uber_relocation_ensemble_model_finalv1.joblib"
-        if not artifact_path.exists():
+        repo_root = Path(__file__).resolve().parents[3]
+        artifact_dir = repo_root / "Model Building" / "Capstone Files" / "Step 3"
+        artifact_path = artifact_dir / "relocation_model_with_recommender.pkl"
+        training_path = artifact_dir / "uber_trips_training.parquet"
+
+        required_paths = (artifact_path, training_path)
+        if not all(path.exists() for path in required_paths):
             return None
 
-        setattr(sys.modules["__main__"], "TunableUCBBandit", TunableUCBBandit)
-        loaded = joblib.load(artifact_path)
-        if not isinstance(loaded, dict):
+        try:
+            setattr(sys.modules["__main__"], "RelocationRecommender", RelocationRecommender)
+            loaded_recommender = joblib.load(artifact_path)
+            training_table = pd.read_parquet(training_path)
+        except (AttributeError, ImportError, ModuleNotFoundError, ValueError) as exc:
+            logger.warning("Relocation artifact could not be loaded; falling back to non-artifact path: %s", exc)
             return None
 
-        required_keys = {
-            "rf_model",
-            "bandit",
-            "travel_matrix",
-            "pay_stats",
-            "taxi_zones",
-            "feature_cols",
-            "loc_to_idx",
-            "idx_to_loc",
-        }
-        if not required_keys.issubset(loaded):
+        zone_lookup = self.bundle.taxi_zone_lookup if hasattr(self, "bundle") else self._load_taxi_zone_lookup()
+        if zone_lookup is None:
+            return None
+
+        feature_cols = list(getattr(loaded_recommender, "features", []))
+        loaded_model = getattr(loaded_recommender, "model", None)
+        zone_lookup_from_artifact = getattr(loaded_recommender, "zone_lookup_df", None)
+        feature_importance_map = dict(getattr(loaded_recommender, "feature_importance_map", {}))
+        sorted_important_features = list(getattr(loaded_recommender, "sorted_important_features", feature_cols))
+
+        if zone_lookup_from_artifact is not None and {"LocationID", "Zone"}.issubset(zone_lookup_from_artifact.columns):
+            zone_lookup = zone_lookup_from_artifact
+
+        if loaded_model is None:
+            return None
+        if not set(feature_cols).issubset(training_table.columns):
+            return None
+        if not {"LocationID", "Zone"}.issubset(zone_lookup.columns):
             return None
 
         return RelocationArtifact(
-            rf_model=loaded["rf_model"],
-            bandit=loaded["bandit"],
-            travel_matrix=loaded["travel_matrix"],
-            pay_stats=loaded["pay_stats"],
-            taxi_zones=loaded["taxi_zones"],
-            feature_cols=list(loaded["feature_cols"]),
-            loc_to_idx=dict(loaded["loc_to_idx"]),
-            idx_to_loc=dict(loaded["idx_to_loc"]),
+            model=loaded_model,
+            training_table=training_table,
+            zone_lookup=zone_lookup,
+            feature_cols=feature_cols,
+            feature_importance_map=feature_importance_map,
+            sorted_important_features=sorted_important_features,
         )
 
     def _load_trip_artifact(self) -> TripArtifact | None:
@@ -104,6 +142,10 @@ class ModelManager:
     @property
     def trip_model(self):
         return self.bundle.trip_model
+
+    @property
+    def taxi_zone_lookup(self) -> pd.DataFrame | None:
+        return self.bundle.taxi_zone_lookup
 
     @property
     def relocation_artifact(self) -> RelocationArtifact | None:

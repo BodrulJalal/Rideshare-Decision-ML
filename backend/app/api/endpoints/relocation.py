@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_services
 from app.core.container import AppServices
-from app.data.trip_dataset import get_zones
 from app.schemas import (
     GeoJsonFeatureCollection,
     RelocationZoneOption,
@@ -15,8 +14,8 @@ router = APIRouter(tags=["relocation"])
 
 
 @router.get("/api/zones", response_model=list[str])
-def list_zones():
-    return [zone.name for zone in get_zones()]
+def list_zones(services: AppServices = Depends(get_services)):
+    return [zone["name"] for zone in services.zone_service.available_relocation_zones()]
 
 
 @router.get("/api/relocation-zones", response_model=list[RelocationZoneOption])

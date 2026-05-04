@@ -89,6 +89,24 @@ function RelocationZoneMap({ geoJson, highlightedZoneIds, currentZoneId }) {
   const constrainedPanY = Math.max(-maxPanY, Math.min(maxPanY, panOffset.y));
   const viewBox = `${centerX - zoomedWidth / 2 + constrainedPanX} ${centerY - zoomedHeight / 2 + constrainedPanY} ${zoomedWidth} ${zoomedHeight}`;
   const currentZoneCenter = currentZoneId ? zoneCenters.get(currentZoneId) : null;
+  const currentZoneBounds = currentZoneId ? zoneBounds.get(currentZoneId) : null;
+  const mapScale = Math.max(width, height);
+  const defaultBadgeRadius = mapScale * 0.0135;
+  const minimumBadgeRadius = mapScale * 0.0028;
+  const zoneLimitedBadgeRadius = currentZoneBounds
+    ? Math.min(
+        defaultBadgeRadius,
+        Math.max(
+          minimumBadgeRadius,
+          Math.min(
+            currentZoneBounds.maxX - currentZoneBounds.minX,
+            currentZoneBounds.maxY - currentZoneBounds.minY,
+          ) * 0.32,
+        ),
+      )
+    : defaultBadgeRadius;
+  const starOutlineRadius = zoneLimitedBadgeRadius * 0.88;
+  const starRadius = zoneLimitedBadgeRadius * 0.77;
 
   useEffect(() => {
     if (!highlightedEntries.length) {
@@ -247,15 +265,15 @@ function RelocationZoneMap({ geoJson, highlightedZoneIds, currentZoneId }) {
             <circle
               cx={currentZoneCenter.x}
               cy={currentZoneCenter.y}
-              r={Math.max(width, height) * 0.0135}
+              r={zoneLimitedBadgeRadius}
               className="current-zone-star-badge"
             />
             <path
-              d={buildStarPath(currentZoneCenter.x, currentZoneCenter.y, Math.max(width, height) * 0.012)}
+              d={buildStarPath(currentZoneCenter.x, currentZoneCenter.y, starOutlineRadius)}
               className="current-zone-star-outline"
             />
             <path
-              d={buildStarPath(currentZoneCenter.x, currentZoneCenter.y, Math.max(width, height) * 0.0105)}
+              d={buildStarPath(currentZoneCenter.x, currentZoneCenter.y, starRadius)}
               className="current-zone-star"
             >
               <title>Current zone marker</title>

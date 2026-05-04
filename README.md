@@ -15,11 +15,11 @@ flowchart LR
     UI -->|REST /api/*| API[FastAPI backend]
     API --> Relocation[Relocation recommendation service]
     API --> Trip[Trip destination prediction service]
-    Relocation --> RelocationArtifact[Notebook relocation ensemble artifact]
+    Relocation --> RelocationArtifact[Step 3 LightGBM relocation artifact]
     Relocation --> ZoneShapes[TLC taxi zone shapefile]
     Trip --> TripArtifact[Saved dropoff classifier artifact]
     API --> LocalData[Local CSV training fallback]
-    RelocationArtifact --> Notebook[Model Building/Capstone.ipynb]
+    RelocationArtifact --> Notebook[Model Building/Capstone Files/Step 3]
 ```
 
 ## Repository structure
@@ -38,9 +38,6 @@ Rideshare-Decision-ML/
       schemas/
       services/
       main.py
-    uber_dropoff_rf_model.joblib
-    uber_label_encoders.joblib
-    uber_relocation_ensemble_model_finalv1.joblib
     Dockerfile
     README.md
     requirements.txt
@@ -77,38 +74,29 @@ Rideshare-Decision-ML/
 
 ### 1. Relocation recommender
 
-The production relocation recommender is documented in [Model Building/Capstone.ipynb](Model%20Building/Capstone.ipynb) and loaded by the backend from `backend/uber_relocation_ensemble_model_finalv1.joblib`.
+The production relocation recommender now uses the exported step-3 LightGBM model in `Model Building/Capstone Files/Step 3/relocation_model.pkl`, with runtime candidate generation driven by the accompanying `uber_trips_training.parquet` and `taxi_zone_lookup.csv`.
 
 ```mermaid
 flowchart TD
     Request[Current zone + day + hour] --> Candidates[Reachable destination zones]
-    Candidates --> Tier1[Tier 1: Random Forest regressor]
-    Candidates --> Tier2[Tier 2: JIT Q-learning policy]
-    Candidates --> Tier3[Tier 3: UCB contextual bandit]
-    Tier1 --> Score1[Immediate earnings score]
-    Tier2 --> Score2[Long-horizon best zone]
-    Tier3 --> Score3[Exploration-aware score]
-    Score1 --> Ensemble[Weighted ensemble]
-    Score2 --> Ensemble
-    Score3 --> Ensemble
-    Ensemble --> Result[Recommended zone + top alternatives]
+    Candidates --> Nearby[Closest candidate destination zones from step-3 training data]
+    Nearby --> LGBM[LightGBM regressor]
+    LGBM --> Ranking[Predicted net gain ranking]
+    Ranking --> Result[Recommended zone + top alternatives]
 ```
 
 Notebook-backed details:
 
-| Layer | Model | Role | Source |
+| Component | Model | Role | Source |
 | --- | --- | --- | --- |
-| Tier 1 | Random Forest Regressor | Predicts expected `pay_per_minute` for a destination zone at a given hour/day | `Capstone.ipynb` |
-| Tier 2 | Q-learning | Finds a zone with stronger long-term reward instead of only short-term pay | `Capstone.ipynb` + deployed runtime logic |
-| Tier 3 | UCB contextual bandit | Avoids sending every driver to the same hotspot and keeps exploration alive | `Capstone.ipynb` |
+| Step 3 relocation ranker | `LGBMRegressor` | Predicts `net_gain` for nearby candidate destination zones | `Model Building/Capstone Files/Step 3/Capstone Data Pipeline Step 3 with EDA.ipynb` |
 
 Important notebook findings:
 
 - The relocation notebook is built around NYC TLC HVFHV data plus TLC taxi-zone lookup and shapefiles.
-- The notebook reports a Random Forest relocation model with best settings of `n_estimators=50`, `max_depth=10`, and `min_samples_split=10`.
-- The notebook reports relocation regression performance of `MAE = $0.12 per minute` and `RMSE = $0.19 per minute`.
-- The notebook tunes the contextual bandit exploration constant and reports `c = 2.0` as the best UCB setting.
-- The deployed backend currently combines the three relocation tiers with weights `0.60`, `0.25`, and `0.15` in `backend/app/services/recommender.py`.
+- The exported step-3 model is a LightGBM regressor trained on `PULocationID`, `DOLocationID`, `hour_bucket`, `day_of_week_numeric`, and `average_PU_to_DO_time`.
+- The notebook evaluates candidate zones by predicted `net_gain`, then compares the recommendation against a stay-put baseline.
+- The backend now mirrors that notebook workflow instead of combining multiple relocation tiers.
 
 ### 2. Trip dropoff predictor
 
@@ -129,7 +117,7 @@ Artifact-backed details:
 - Encoder coverage in the deployed artifact: 9 trip types, 35 pickup zones, and 43 dropoff zones
 
 Note:
-The main notebook in this repo focuses on the relocation ensemble. The dropoff model description above comes from direct inspection of the saved production artifact that the backend loads at runtime.
+The dropoff model description above comes from direct inspection of the saved production artifact that the backend loads at runtime.
 
 ### 3. Fallback training path
 

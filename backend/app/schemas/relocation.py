@@ -18,6 +18,7 @@ class ZoneCandidate(BaseModel):
   demand_index: float
   predicted_hourly_earnings: float
   net_score: float
+  explanation: str
 
 
 class ZoneRecommendationResponse(BaseModel):

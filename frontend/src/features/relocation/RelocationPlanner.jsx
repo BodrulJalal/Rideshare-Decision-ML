@@ -12,6 +12,36 @@ function RelocationPlanner({
   zoneLoading,
   zoneResult,
 }) {
+  function isStayPutOption(item) {
+    return Number(item?.travel_minutes ?? 0) <= 0.05;
+  }
+
+  function displayNetIncrease(item) {
+    if (isStayPutOption(item)) {
+      return "$0.00";
+    }
+    const value = Number(item?.net_score ?? 0);
+    const amount = Math.abs(value).toFixed(2);
+    return value < 0 ? `-$${amount}` : `+$${amount}`;
+  }
+
+  function explanationLines(text, item) {
+    if (isStayPutOption(item)) {
+      return [
+        `${item.zone} is your current zone, so staying here requires no travel time.`,
+        "This reflects overall market activity across all drivers, not individual driver earnings.",
+        `Your adjusted earning exposure for the rest of the hour remains approximately $${Number(item.predicted_hourly_earnings ?? 0).toFixed(2)}.`,
+      ];
+    }
+    return text.split("\n");
+  }
+
+  function renderExplanation(text, item) {
+    return explanationLines(text, item).map((line) => (
+      <p key={line}>{line}</p>
+    ));
+  }
+
   return (
     <article className="panel">
       <h2>Best Zone To Wait</h2>
@@ -59,19 +89,49 @@ function RelocationPlanner({
         {zoneResult && (
           <>
             <strong>{zoneResult.recommended_zone}</strong>
-            <p>{zoneResult.driver_message}</p>
+            <div>
+              {renderExplanation(zoneResult.driver_message, {
+                zone: zoneResult.recommended_zone,
+                travel_minutes: zoneResult.travel_minutes,
+                predicted_hourly_earnings: zoneResult.predicted_hourly_earnings,
+              })}
+            </div>
+            <p>
+              Travel time: <strong>{zoneResult.travel_minutes} minutes</strong>
+            </p>
+            <p>
+              Net change after relocating: <strong>{displayNetIncrease(zoneResult.top_alternatives[0])}/hr</strong>
+            </p>
+            <p>
+              Adjusted earning exposure: <strong>${zoneResult.predicted_hourly_earnings}</strong>
+            </p>
             <p>Current zone: {zoneResult.current_zone}</p>
             <p>
               Inputs used: {zoneResult.current_zone}, {dayOptions[activeDayIndex]}, {activeTimeLabel}
             </p>
-            <p>Top options right now:</p>
-            <ul>
-              {zoneResult.top_alternatives.map((item) => (
-                <li key={item.zone}>
-                  <strong>{item.zone}</strong>
-                </li>
-              ))}
-            </ul>
+            <details className="see-more-dropdown">
+              <summary>See more</summary>
+              <div className="see-more-content">
+                <p>Top options right now:</p>
+                <ul>
+                  {zoneResult.top_alternatives.map((item) => (
+                    <li key={item.zone}>
+                    <strong>{item.zone}</strong>
+                    <p>
+                      Travel time: <strong>{item.travel_minutes} minutes</strong>
+                    </p>
+                      <p>
+                        Net change after relocating: <strong>{displayNetIncrease(item)}/hr</strong>
+                      </p>
+                    <p>
+                      Adjusted earning exposure: <strong>${item.predicted_hourly_earnings}</strong>
+                    </p>
+                    <div>{renderExplanation(item.explanation, item)}</div>
+                  </li>
+                ))}
+              </ul>
+              </div>
+            </details>
           </>
         )}
         {!zoneResult && !zoneError && (

@@ -434,6 +434,45 @@ button {
   font-family: "Space Grotesk", sans-serif;
 }
 
+.see-more-dropdown {
+  margin-top: 1rem;
+  border-top: 1px solid rgba(28, 42, 34, 0.08);
+  padding-top: 0.9rem;
+}
+
+.see-more-dropdown summary {
+  cursor: pointer;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  color: var(--accent-dark);
+  list-style: none;
+}
+
+.see-more-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.see-more-dropdown summary::after {
+  content: " +";
+}
+
+.see-more-dropdown[open] summary::after {
+  content: " -";
+}
+
+.see-more-content {
+  margin-top: 0.9rem;
+}
+
+.see-more-content ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.see-more-content li + li {
+  margin-top: 1rem;
+}
+
 .pill {
   display: inline-block;
   margin-top: 0.75rem;
