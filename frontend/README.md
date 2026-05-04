@@ -12,7 +12,6 @@ frontend/
       sections/
     features/
       relocation/
-      trip/
     lib/
       api.js
       constants.js
@@ -24,9 +23,8 @@ frontend/
 
 ## Responsibilities
 
-- Load zones, trip types, and taxi-zone GeoJSON from the backend.
+- Load relocation zones and taxi-zone GeoJSON from the backend.
 - Let drivers request a relocation recommendation.
-- Let drivers predict the most likely dropoff zone for a trip offer.
 - Render the taxi-zone SVG map and highlight the current, recommended, and alternate zones.
 
 ## Local commands

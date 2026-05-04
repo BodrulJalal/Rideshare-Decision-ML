@@ -13,7 +13,6 @@ import numpy as np
 from app.data.sample_data import (
     ZONES as SAMPLE_ZONES,
     ZONE_LOOKUP as SAMPLE_ZONE_LOOKUP,
-    build_trip_offer_dataset as build_sample_trip_offer_dataset,
     build_zone_recommendation_dataset as build_sample_zone_recommendation_dataset,
 )
 
@@ -308,38 +307,3 @@ def build_zone_recommendation_dataset():
             targets.append(round(float(attractiveness + rng.normal(0, 2.5)), 2))
 
     return rows, np.array(targets)
-
-
-def build_trip_offer_dataset():
-    records = load_trip_rows()
-    if len(records) < 20:
-        rows, labels = build_sample_trip_offer_dataset()
-        enriched_rows = [
-            {**row, "day_of_week": index % 7, "hour": (8 + index) % 24}
-            for index, row in enumerate(rows)
-        ]
-        return enriched_rows, labels
-
-    values = np.array([float(record["estimated_value"]) for record in records])
-    high_value_cutoff = float(np.quantile(values, 0.65))
-    rng = np.random.default_rng(7)
-
-    rows: list[dict[str, object]] = []
-    labels: list[int] = []
-    for record in records:
-        trip_minutes = float(record["trip_minutes"])
-        estimated_value = float(record["estimated_value"])
-        day_of_week = int(record["day_of_week"])
-        hour = int(record["hour"])
-        for _ in range(6):
-            rows.append(
-                {
-                    "pickup_zone": str(record["pickup_zone"]),
-                    "day_of_week": day_of_week,
-                    "hour": hour,
-                    "trip_minutes": round(float(max(1.0, trip_minutes + rng.normal(0, 1.4))), 2),
-                }
-            )
-            labels.append(1 if estimated_value >= high_value_cutoff else 0)
-
-    return rows, np.array(labels)

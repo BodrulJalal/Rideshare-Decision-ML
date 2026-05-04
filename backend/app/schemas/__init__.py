@@ -7,7 +7,6 @@ from app.schemas.geojson import (
   RelocationZoneOption,
 )
 from app.schemas.relocation import ZoneCandidate, ZoneRecommendationRequest, ZoneRecommendationResponse
-from app.schemas.trip import TripDestinationCandidate, TripEvaluationRequest, TripEvaluationResponse
 
 __all__ = [
   "GeoJsonFeature",
@@ -16,9 +15,6 @@ __all__ = [
   "GeoJsonGeometry",
   "HealthResponse",
   "RelocationZoneOption",
-  "TripDestinationCandidate",
-  "TripEvaluationRequest",
-  "TripEvaluationResponse",
   "ZoneCandidate",
   "ZoneRecommendationRequest",
   "ZoneRecommendationResponse",

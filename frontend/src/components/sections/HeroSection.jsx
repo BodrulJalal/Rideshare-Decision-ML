@@ -2,19 +2,19 @@ function HeroSection() {
   return (
     <section className="hero">
       <div>
-        <p className="eyebrow">Ride-Hailing Driver Toolkit</p>
-        <h1>Pick better zones. Judge offers faster.</h1>
+        <p className="eyebrow">Rideshare Relocation Planner</p>
+        <h1>Reposition toward better zones with clearer reasoning.</h1>
         <p className="hero-copy">
-          A React frontend talks to a FastAPI backend to help drivers reposition toward stronger
-          zones and quickly assess whether a ride offer is worth taking.
+          A React frontend talks to a FastAPI backend to help drivers identify stronger waiting
+          zones using historical trip patterns, estimated travel time, and NYC taxi-zone map data.
         </p>
       </div>
       <div className="hero-card">
-        <p>Powered by two ML endpoints</p>
+        <p>How the relocator helps</p>
         <ul>
-          <li>Relocation recommendations from the saved Uber zone ensemble</li>
-          <li>Dropoff-zone prediction using pickup zone, ride type, time, and trip length</li>
-          <li>Travel time and demand signals blended into the relocation ranking response</li>
+          <li>Recommends the best nearby zone to wait in based on expected earning opportunity</li>
+          <li>Explains each recommendation with travel time, projected exposure gain, and top alternatives</li>
+          <li>Shows the current zone, recommended zone, and contenders directly on the NYC taxi-zone map</li>
         </ul>
       </div>
     </section>

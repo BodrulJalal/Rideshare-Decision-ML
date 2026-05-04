@@ -8,11 +8,6 @@ CREATE TABLE IF NOT EXISTS dim_zone (
     centroid_lng NUMERIC(9, 6)
 );
 
-CREATE TABLE IF NOT EXISTS dim_trip_type (
-    trip_type_id BIGSERIAL PRIMARY KEY,
-    trip_type_name TEXT NOT NULL UNIQUE
-);
-
 CREATE TABLE IF NOT EXISTS fact_trip_offer (
     trip_offer_id BIGSERIAL PRIMARY KEY,
     trip_date DATE NOT NULL,
@@ -26,7 +21,6 @@ CREATE TABLE IF NOT EXISTS fact_trip_offer (
     pickup_wait_min NUMERIC(10, 2),
     pickup_zone_id BIGINT NOT NULL REFERENCES dim_zone(zone_id),
     dropoff_zone_id BIGINT REFERENCES dim_zone(zone_id),
-    trip_type_id BIGINT REFERENCES dim_trip_type(trip_type_id),
     source_system TEXT,
     source_file TEXT
 );

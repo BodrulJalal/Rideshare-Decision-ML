@@ -8,7 +8,7 @@ import sys
 import joblib
 import pandas as pd
 
-from app.ml.training import train_trip_model, train_zone_model
+from app.ml.training import train_zone_model
 
 
 logger = logging.getLogger(__name__)
@@ -29,35 +29,24 @@ class RelocationArtifact:
 
 
 @dataclass
-class TripArtifact:
-    model: object
-    label_encoders: dict[str, object]
-
-
-@dataclass
 class ModelBundle:
     zone_model: object
-    trip_model: object
     taxi_zone_lookup: pd.DataFrame | None
     relocation_artifact: RelocationArtifact | None
-    trip_artifact: TripArtifact | None
 
 
 class ModelManager:
     def __init__(self):
         self.bundle = ModelBundle(
             zone_model=train_zone_model(),
-            trip_model=train_trip_model(),
             taxi_zone_lookup=self._load_taxi_zone_lookup(),
             relocation_artifact=self._load_relocation_artifact(),
-            trip_artifact=self._load_trip_artifact(),
         )
 
     def _load_taxi_zone_lookup(self) -> pd.DataFrame | None:
         repo_root = Path(__file__).resolve().parents[3]
         candidate_paths = (
             repo_root / "Model Building" / "Capstone Files" / "Step 3" / "taxi_zone_lookup.csv",
-            repo_root / "Model Building" / "content" / "taxi_zone_lookup.csv",
         )
 
         for path in candidate_paths:
@@ -120,28 +109,9 @@ class ModelManager:
             sorted_important_features=sorted_important_features,
         )
 
-    def _load_trip_artifact(self) -> TripArtifact | None:
-        model_path = Path(__file__).resolve().parents[2] / "uber_dropoff_rf_model.joblib"
-        encoder_path = Path(__file__).resolve().parents[2] / "uber_label_encoders.joblib"
-        if not model_path.exists() or not encoder_path.exists():
-            return None
-
-        model = joblib.load(model_path)
-        encoders = joblib.load(encoder_path)
-        if not isinstance(encoders, dict):
-            return None
-        required_keys = {"trip_type", "pickup_zone", "dropoff_zone"}
-        if not required_keys.issubset(encoders):
-            return None
-        return TripArtifact(model=model, label_encoders=encoders)
-
     @property
     def zone_model(self):
         return self.bundle.zone_model
-
-    @property
-    def trip_model(self):
-        return self.bundle.trip_model
 
     @property
     def taxi_zone_lookup(self) -> pd.DataFrame | None:
@@ -150,7 +120,3 @@ class ModelManager:
     @property
     def relocation_artifact(self) -> RelocationArtifact | None:
         return self.bundle.relocation_artifact
-
-    @property
-    def trip_artifact(self) -> TripArtifact | None:
-        return self.bundle.trip_artifact
