@@ -1,4 +1,8 @@
 from app.schemas import (
+    CopilotAppContext,
+    CopilotChatRequest,
+    CopilotChatResponse,
+    CopilotParameters,
     GeoJsonFeature,
     GeoJsonFeatureCollection,
     GeoJsonFeatureProperties,

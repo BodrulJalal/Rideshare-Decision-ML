@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import HeroSection from "./components/sections/HeroSection";
 import TimeSettingsPanel from "./components/sections/TimeSettingsPanel";
+import RelocationCopilot from "./features/relocation/RelocationCopilot";
 import RelocationPlanner from "./features/relocation/RelocationPlanner";
 import ZoneMapPanel from "./features/relocation/ZoneMapPanel";
 import { fetchJson, postJson } from "./lib/api";
@@ -108,6 +109,57 @@ function App() {
     }
   }
 
+  async function requestCurrentLocationForCopilot() {
+    if (zoneForm.latitude != null && zoneForm.longitude != null) {
+      return {
+        current_zone_id: zoneForm.current_zone ? Number(zoneForm.current_zone) : null,
+        current_zone_name: activeZoneName,
+        latitude: zoneForm.latitude,
+        longitude: zoneForm.longitude,
+        location_label: zoneForm.locationLabel || "Using current device location",
+        day_of_week: activeDayIndex,
+        hour: Number(activeHourValue),
+        use_custom_time: useCustomTime,
+      };
+    }
+
+    if (!navigator.geolocation) {
+      throw new Error("Your browser does not support location access.");
+    }
+
+    setZoneError("");
+    setLocationLoading(true);
+    try {
+      const position = await getCurrentPosition();
+      const nextForm = {
+        current_zone: "",
+        locationLabel: "Using current device location",
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+      setZoneForm((current) => ({
+        ...current,
+        ...nextForm,
+      }));
+      return {
+        current_zone_id: null,
+        current_zone_name: null,
+        latitude: nextForm.latitude,
+        longitude: nextForm.longitude,
+        location_label: nextForm.locationLabel,
+        day_of_week: activeDayIndex,
+        hour: Number(activeHourValue),
+        use_custom_time: useCustomTime,
+      };
+    } catch (error) {
+      const message = getGeolocationErrorMessage(error);
+      setZoneError(message);
+      throw new Error(message);
+    } finally {
+      setLocationLoading(false);
+    }
+  }
+
   const relocationZoneLookup = Object.fromEntries(relocationZones.map((zone) => [zone.name, zone.id]));
   const selectedZoneId = Number(zoneForm.current_zone || 0);
   const resultCurrentZoneId = zoneResult?.current_zone ? relocationZoneLookup[zoneResult.current_zone] || 0 : 0;
@@ -133,6 +185,34 @@ function App() {
   const activeDayIndex = useCustomTime ? Number(timeOverride.day_of_week) : ((new Date().getDay() + 6) % 7);
   const activeHourValue = useCustomTime ? String(timeOverride.hour) : String(new Date().getHours());
   const activeTimeLabel = TIME_OPTIONS.find((option) => option.value === activeHourValue)?.label || `${activeHourValue}:00`;
+  const activeZoneName = relocationZones.find((zone) => String(zone.id) === String(zoneForm.current_zone))?.name || null;
+
+  function handleCopilotRecommendation(results, parameters) {
+    setZoneResult(results);
+
+    if (parameters?.use_current_location) {
+      setZoneForm((current) => ({
+        ...current,
+        current_zone: "",
+      }));
+    } else if (parameters?.current_zone_id) {
+      setZoneForm((current) => ({
+        ...current,
+        current_zone: String(parameters.current_zone_id),
+        locationLabel: "",
+        latitude: null,
+        longitude: null,
+      }));
+    }
+
+    if (!parameters?.use_current_time && parameters?.day_of_week != null && parameters?.hour != null) {
+      setUseCustomTime(true);
+      setTimeOverride({
+        day_of_week: String(parameters.day_of_week),
+        hour: String(parameters.hour),
+      });
+    }
+  }
 
   return (
     <main className="page-shell">
@@ -165,6 +245,23 @@ function App() {
           currentZoneId={currentZoneId}
           highlightedZoneIds={highlightedZoneIds}
           relocationGeoJson={relocationGeoJson}
+        />
+      </section>
+
+      <section className="copilot-grid">
+        <RelocationCopilot
+          appContext={{
+            current_zone_id: zoneForm.current_zone ? Number(zoneForm.current_zone) : null,
+            current_zone_name: activeZoneName,
+            latitude: zoneForm.latitude,
+            longitude: zoneForm.longitude,
+            location_label: zoneForm.locationLabel || null,
+            day_of_week: activeDayIndex,
+            hour: Number(activeHourValue),
+            use_custom_time: useCustomTime,
+          }}
+          onApplyRecommendation={handleCopilotRecommendation}
+          onRequestCurrentLocation={requestCurrentLocationForCopilot}
         />
       </section>
     </main>

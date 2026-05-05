@@ -39,3 +39,13 @@ python -m venv .venv
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
+
+## Environment
+
+Set these in `backend/.env` or your shell before starting the API:
+
+```text
+BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.5-flash
+```

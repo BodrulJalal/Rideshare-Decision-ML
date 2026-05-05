@@ -25,6 +25,7 @@ frontend/
 
 - Load relocation zones and taxi-zone GeoJSON from the backend.
 - Let drivers request a relocation recommendation.
+- Provide a voice-enabled relocation copilot that can chat, explain recommendations, and run what-if scenarios.
 - Render the taxi-zone SVG map and highlight the current, recommended, and alternate zones.
 
 ## Local commands

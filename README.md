@@ -133,6 +133,7 @@ That fallback path is implemented in:
 - `GET /api/zones`
 - `GET /api/relocation-zones`
 - `GET /api/relocation-zones-geojson`
+- `POST /api/copilot/chat`
 - `POST /api/recommend-zone`
 
 ## Local development

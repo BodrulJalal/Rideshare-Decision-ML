@@ -186,13 +186,15 @@ label {
 
 input,
 select,
+textarea,
 button {
   font: inherit;
   border-radius: 14px;
 }
 
 input,
-select {
+select,
+textarea {
   padding: 0.85rem 1rem;
   border: 1px solid rgba(28, 42, 34, 0.12);
   background: rgba(255, 255, 255, 0.88);
@@ -274,6 +276,81 @@ button {
 .map-panel,
 .single-panel {
   min-height: 100%;
+}
+
+.copilot-grid {
+  margin-top: 1.5rem;
+}
+
+.copilot-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.copilot-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.copilot-close-button {
+  white-space: nowrap;
+}
+
+.copilot-status {
+  margin: 0;
+  color: rgba(28, 42, 34, 0.76);
+}
+
+.copilot-transcript {
+  display: grid;
+  gap: 0.9rem;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 0.3rem;
+}
+
+.copilot-message {
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(28, 42, 34, 0.08);
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.copilot-message.assistant {
+  background: rgba(12, 124, 89, 0.09);
+}
+
+.copilot-message.user {
+  background: rgba(239, 131, 84, 0.1);
+}
+
+.copilot-message p {
+  margin: 0.35rem 0 0;
+  line-height: 1.6;
+}
+
+.copilot-role {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.copilot-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.copilot-form textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+.copilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
 }
 
 .relocation-map {
@@ -463,6 +540,11 @@ button {
   .time-panel-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .copilot-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .time-controls {
