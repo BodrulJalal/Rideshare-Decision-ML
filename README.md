@@ -1,34 +1,83 @@
 # Driver Earnings Navigator
 
-Driver Earnings Navigator is a full-stack rideshare decision-support project for drivers. It is now focused entirely on relocation planning:
+**Deployed version:** <https://huggingface.co/spaces/BodrulJalal/Uber_Relocation_Planner>
 
-- a relocation recommender that suggests the best taxi zone to move toward next.
+Driver Earnings Navigator is a full-stack machine-learning app that helps NYC Uber drivers decide where to wait next. The app recommends nearby TLC taxi zones using historical Uber trip patterns, estimated travel time, and adjusted earning exposure.
 
-The repository is now organized into dedicated `frontend`, `backend`, and `data-engineering` areas so the application is easier to understand, run, and deploy.
+## Quick Links
 
-## System architecture
+- [Deployed Hugging Face Space](https://huggingface.co/spaces/BodrulJalal/Uber_Relocation_Planner)
+- [Capstone Documentation](docs/README.md)
+- [Model Documentation](docs/model-documentation.md)
+- [App Design](docs/app-design.md)
+- [App Analysis](docs/app-analysis.md)
+- [Data Dictionary](docs/data-dictionary.md)
+- [RDS Architecture](data-engineering/architecture/rds-architecture.md)
+- [PostgreSQL Schema](data-engineering/sql/postgres-schema.sql)
+
+## Problem
+
+NYC Uber drivers often decide where to wait between trips using experience, guesswork, or general knowledge of busy neighborhoods. During slower periods, this can lead to wasted time in weak-demand zones.
+
+## Research Question
+
+How can a machine-learning-powered web app help NYC Uber drivers reduce unproductive waiting time by recommending nearby NYC TLC zones to relocate to using historical Uber trip patterns, estimated travel time, and adjusted earning exposure?
+
+The app addresses two related questions:
+
+- Which nearby zone is historically stronger for waiting right now?
+- Is relocating worth the travel time?
+
+## Key Features
+
+- Recommends the best nearby TLC taxi zone to wait in.
+- Shows top alternative zones instead of only one answer.
+- Explains recommendations using travel time and adjusted earning exposure.
+- Highlights current, recommended, and alternative zones on a NYC taxi-zone map.
+- Supports current device location or manual zone selection.
+- Supports custom day/hour scenarios for planning or what-if analysis.
+- Includes a Gemini-powered voice/text copilot for natural-language questions.
+
+## Architecture
+
+### App Architecture
 
 ```mermaid
 flowchart LR
-    Driver[Driver] --> UI[React + Vite frontend]
-    UI -->|REST /api/*| API[FastAPI backend]
-    API --> Relocation[Relocation recommendation service]
-    Relocation --> RelocationArtifact[Step 3 relocation recommender artifact]
-    Relocation --> ZoneShapes[TLC taxi zone shapefile]
-    API --> LocalData[Local CSV training fallback]
-    RelocationArtifact --> Notebook[Model Building/Capstone Files/Step 3]
+    Driver[NYC Uber Driver] --> UI[React + Vite Frontend]
+    UI -->|REST /api/*| API[FastAPI Backend]
+    API --> Relocation[Relocation Recommendation Service]
+    API --> Copilot[Gemini Copilot Service]
+    API --> Geo[Taxi Zone GeoJSON]
+    Relocation --> Model[LightGBM Model Artifact]
+    Relocation --> Training[Step 3 Training Table]
+    Relocation --> Zones[Taxi Zone Lookup]
+    Geo --> Shapes[TLC Taxi Zone Shapefile]
 ```
 
-## Repository structure
+### Data And Model Pipeline
+
+```mermaid
+flowchart LR
+    Raw[Raw TLC HVFHV Monthly Data] --> Uber[Uber-Only Trip Extraction]
+    Uber --> Zones[Taxi Zone Lookup Join]
+    Zones --> Clean[Cleaned Trip Data]
+    Clean --> Processed[Processed Trip Features]
+    Processed --> Aggregates[Zone/Route Hourly Aggregates]
+    Aggregates --> Training[Step 3 Relocation Training Table]
+    Training --> LGBM[LightGBM Regressor]
+    LGBM --> Artifact[Saved Relocation Model Artifact]
+    Artifact --> Backend[FastAPI Recommendation Service]
+    Backend --> App[React Driver App]
+```
+
+## Repository Structure
 
 ```text
 Rideshare-Decision-ML/
   backend/
     app/
       api/
-        endpoints/
-        dependencies.py
-        router.py
       core/
       data/
       ml/
@@ -56,87 +105,82 @@ Rideshare-Decision-ML/
     sql/
       postgres-schema.sql
     README.md
-  data/
-    trips/
-      Uber Rides - Cleaned.csv
+  docs/
+    app-analysis.md
+    app-design.md
+    data-dictionary.md
+    model-documentation.md
+    poster-plan.md
+    research-question.md
   Model Building/
     Capstone Files/
+      Step 1/
+      Step 2/
       Step 3/
-        relocation_model_with_recommender.pkl
-        taxi_zone_lookup.csv
-        uber_trips_training.parquet
-        uber_trips_test.parquet
     content/
       taxi_zones/
   docker-compose.yml
 ```
 
-## Machine learning models
+## Machine Learning Model
 
-### 1. Relocation recommender
+The relocation recommender uses a LightGBM regression model trained from notebook-generated Step 3 relocation features.
 
-The production relocation recommender now uses only `Model Building/Capstone Files/Step 3/relocation_model_with_recommender.pkl`, with runtime candidate generation driven by the accompanying `uber_trips_training.parquet` and `taxi_zone_lookup.csv`.
+Saved model artifact:
 
-```mermaid
-flowchart TD
-    Request[Current zone + day + hour] --> Candidates[Reachable destination zones]
-    Candidates --> Nearby[Closest candidate destination zones from step-3 training data]
-    Nearby --> LGBM[LightGBM regressor]
-    LGBM --> Ranking[Predicted net gain ranking]
-    Ranking --> Result[Recommended zone + top alternatives]
+```text
+Model Building/Capstone Files/Step 3/relocation_model_with_recommender.pkl
 ```
 
-Notebook-backed details:
+Direct model features:
 
-| Component | Model | Role | Source |
-| --- | --- | --- | --- |
-| Step 3 relocation recommender | `RelocationRecommender` + `LGBMRegressor` | Predicts `net_gain` for nearby candidate destination zones and packages lookup metadata used by the backend | `Model Building/Capstone Files/Step 3/Capstone Data Pipeline Step 3 with EDA.ipynb` |
+- `PULocationID`
+- `DOLocationID`
+- `hour_bucket`
+- `day_of_week_numeric`
+- `average_PU_to_DO_time`
 
-Important notebook findings:
+Target:
 
-- The relocation notebook is built around NYC TLC HVFHV data plus TLC taxi-zone lookup and shapefiles.
-- The exported step-3 recommender artifact wraps the trained LightGBM relocation model together with feature metadata and taxi-zone lookup data.
-- The underlying model is trained on `PULocationID`, `DOLocationID`, `hour_bucket`, `day_of_week_numeric`, and `average_PU_to_DO_time`.
-- The notebook evaluates candidate zones by predicted `net_gain`, then compares the recommendation against a stay-put baseline.
-- The backend now mirrors that single-model workflow and no longer uses the older multi-model relocation pipeline.
+- `net_gain`
 
-### 2. Fallback training path
+Final model metrics from the Step 3 notebook:
 
-If the saved artifacts are missing, the backend can still start by training simplified models from:
+| Metric | Result |
+|---|---:|
+| MAE | 317.4087 |
+| RMSE | 460.4430 |
+| R-squared | 0.8854 |
+| Average NDCG | 0.9749 |
 
-- `data/trips/Uber Rides - Cleaned.csv`
-- synthetic fallback data in `backend/app/data/sample_data.py`
+More detail is documented in [docs/model-documentation.md](docs/model-documentation.md).
 
-That fallback path is implemented in:
+## Data Pipeline
 
-- `backend/app/ml/training.py`
-- `backend/app/data/trip_dataset.py`
+The notebook workflow is organized into three stages:
 
-## Data sources
+1. **Step 1:** Load TLC HVFHV monthly data, filter to Uber records, join taxi-zone lookup data, and create cleaned trip files.
+2. **Step 2:** Build route travel-time metrics, zone/hour earning metrics, trip density, opportunity scores, travel penalty, and `net_gain`.
+3. **Step 3:** Train and evaluate the LightGBM relocation model and export the model artifact.
 
-- `Model Building/Capstone Files/Step 3/relocation_model_with_recommender.pkl`
-  Saved relocation recommender artifact loaded by the backend.
-- `Model Building/Capstone Files/Step 3/taxi_zone_lookup.csv`
-  Taxi-zone lookup table used by the relocation artifact and zone selector.
-- `Model Building/Capstone Files/Step 3/uber_trips_training.parquet`
-  Step-3 training table used for relocation candidate generation at runtime.
-- `Model Building/Capstone Files/Step 3/uber_trips_test.parquet`
-  Step-3 evaluation table kept with the model-building assets.
-- `Model Building/content/taxi_zones/*`
-  Shapefile assets used by the backend to produce GeoJSON for the relocation map.
-- `data/trips/Uber Rides - Cleaned.csv`
-  Cleaned trip data used by the lightweight fallback pipeline.
+The current app loads local artifacts generated by this workflow. The production data-engineering plan describes how to move the same workflow into PostgreSQL/RDS tables and scheduled refresh jobs.
 
-## API surface
+See:
+
+- [docs/data-dictionary.md](docs/data-dictionary.md)
+- [data-engineering/architecture/rds-architecture.md](data-engineering/architecture/rds-architecture.md)
+- [data-engineering/sql/postgres-schema.sql](data-engineering/sql/postgres-schema.sql)
+
+## API Surface
 
 - `GET /api/health`
 - `GET /api/zones`
 - `GET /api/relocation-zones`
 - `GET /api/relocation-zones-geojson`
-- `POST /api/copilot/chat`
 - `POST /api/recommend-zone`
+- `POST /api/copilot/chat`
 
-## Local development
+## Local Development
 
 ### Backend
 
@@ -148,7 +192,19 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-The backend runs on `http://127.0.0.1:8000`.
+The backend runs on:
+
+```text
+http://127.0.0.1:8000
+```
+
+Backend environment variables:
+
+```text
+BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.5-flash
+```
 
 ### Frontend
 
@@ -159,25 +215,56 @@ copy .env.example .env
 npm run dev
 ```
 
-The frontend runs on `http://127.0.0.1:5173`.
+The frontend runs on:
 
-## Docker deployment
-
-This repo now includes Dockerfiles for both applications and a root `docker-compose.yml`.
-
-```bash
-docker compose up --build
+```text
+http://127.0.0.1:5173
 ```
+
+Frontend environment variables:
+
+```text
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
 
 Default ports:
 
 - frontend: `http://localhost:5173`
 - backend: `http://localhost:8000`
 
-## Data engineering and RDS documentation
+## Evaluation Summary
 
-The new `data-engineering/` folder documents how to move the current local-file workflow into a PostgreSQL RDS-backed architecture:
+Local app analysis is documented in [docs/app-analysis.md](docs/app-analysis.md).
 
-- [data-engineering/README.md](data-engineering/README.md)
-- [data-engineering/architecture/rds-architecture.md](data-engineering/architecture/rds-architecture.md)
-- [data-engineering/sql/postgres-schema.sql](data-engineering/sql/postgres-schema.sql)
+Measured local performance:
+
+| Metric | Result |
+|---|---:|
+| Frontend build time | 2.68 seconds |
+| Backend startup time | 2.64 seconds |
+| `/api/health` response time | 13.3 ms |
+| `/api/relocation-zones` response time | 859.9 ms |
+| `/api/relocation-zones-geojson` response time | 568.5 ms |
+| `/api/recommend-zone` response time | 148.6 ms |
+
+User feedback influenced the final app direction, including removing an offered-trip destination prediction feature, keeping explanation text, and adding the voice/text copilot.
+
+## Capstone Documentation
+
+The `docs/` folder contains the written evidence for the capstone rubric:
+
+- [Research Question](docs/research-question.md)
+- [App Design](docs/app-design.md)
+- [App Analysis](docs/app-analysis.md)
+- [Data Dictionary](docs/data-dictionary.md)
+- [Model Documentation](docs/model-documentation.md)
+- [Poster Plan](docs/poster-plan.md)
+
+## Future Work
+
+- Add streets and landmarks to the taxi-zone map.
+- Refresh model features with new monthly data.
+- Maintain rolling averages to capture seasonal, holiday, and event-driven trends.
+- Add weather, events, airport delays, driver supply, and live demand signals.
+- Run live driver testing to measure whether recommendations reduce wait time during slower periods.
