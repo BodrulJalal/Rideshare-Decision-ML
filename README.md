@@ -132,6 +132,19 @@ Saved model artifact:
 Model Building/Capstone Files/Step 3/relocation_model_with_recommender.pkl
 ```
 
+Runtime training table:
+
+```text
+Model Building/Capstone Files/Step 3/uber_trips_training.parquet
+```
+
+These model artifacts are stored with Git LFS. Install Git LFS before cloning, or run these commands after cloning:
+
+```bash
+git lfs install
+git lfs pull
+```
+
 Direct model features:
 
 - `PULocationID`

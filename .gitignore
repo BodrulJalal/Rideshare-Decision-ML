@@ -1,4 +1,6 @@
 Model Building/Capstone Files/**/*.parquet
+!Model Building/Capstone Files/Step 3/uber_trips_training.parquet
+!Model Building/Capstone Files/Step 3/uber_trips_test.parquet
 backend/.venv/
 frontend/node_modules/
 frontend/dist/
